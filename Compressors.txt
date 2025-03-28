@@ -113,18 +113,15 @@ vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
     int bit_length = encoded_bits.size();
 
     vector<unsigned char> header;
-    // Write bit length (4 bytes)
     for (int i = 0; i < 4; ++i) {
         header.push_back((bit_length >> (i * 8)) & 0xFF);
     }
 
-    // Write non-zero count (4 bytes)
     int non_zero = count_if(frequencies.begin(), frequencies.end(), [](int f) { return f > 0; });
     for (int i = 0; i < 4; ++i) {
         header.push_back((non_zero >> (i * 8)) & 0xFF);
     }
 
-    // Write frequency table
     for (int byte = 0; byte < 256; ++byte) {
         if (frequencies[byte] > 0) {
             header.push_back(byte);
@@ -134,11 +131,9 @@ vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
         }
     }
 
-    // Pad encoded bits to multiple of 8
     int padded_length = ((bit_length + 7) / 8) * 8;
     encoded_bits.resize(padded_length, '0');
 
-    // Convert bits to bytes
     for (size_t i = 0; i < encoded_bits.size(); i += 8) {
         string byte_str = encoded_bits.substr(i, 8);
         unsigned char byte = static_cast<unsigned char>(bitset<8>(byte_str).to_ulong());
@@ -153,19 +148,16 @@ vector<unsigned char> ha_decoder(const vector<unsigned char>& encoded_data) {
         throw runtime_error("Invalid encoded data: too short");
     }
 
-    // Read bit length
     int bit_length = 0;
     for (int i = 0; i < 4; ++i) {
         bit_length |= encoded_data[i] << (i * 8);
     }
 
-    // Read non-zero count
     int non_zero = 0;
     for (int i = 4; i < 8; ++i) {
         non_zero |= encoded_data[i] << ((i - 4) * 8);
     }
 
-    // Read frequency table
     vector<int> frequencies(256, 0);
     size_t pos = 8;
     for (int i = 0; i < non_zero; ++i) {
@@ -187,14 +179,12 @@ vector<unsigned char> ha_decoder(const vector<unsigned char>& encoded_data) {
         reverse_codes[pair.second] = pair.first;
     }
 
-    // Convert remaining data to bit string
     string encoded_bits;
     for (size_t i = pos; i < encoded_data.size(); ++i) {
         encoded_bits += bitset<8>(encoded_data[i]).to_string();
     }
     encoded_bits.resize(bit_length);
 
-    // Decode bits
     vector<unsigned char> decoded;
     string current_code;
     for (char bit : encoded_bits) {
@@ -295,7 +285,6 @@ vector<char> compressRLE(const vector<char>& input) {
         char current = input[i];
         size_t count = 1;
 
-        // Подсчет повторяющихся символов
         while (i + count < n && input[i + count] == current && count < 127) {
             count++;
         }
@@ -306,7 +295,6 @@ vector<char> compressRLE(const vector<char>& input) {
             i += count;
         }
         else {
-            // Подсчет уникальных символов
             size_t unique_count = 0;
             while (i + unique_count < n &&
                 (i + unique_count + 1 >= n || input[i + unique_count] != input[i + unique_count + 1]) &&
@@ -338,7 +326,6 @@ vector<char> decompressRLE(const vector<char>& compressed) {
         signed char count = static_cast<signed char>(compressed[i]);
 
         if (count > 0) {
-            // Обработка повторяющихся символов
             if (i + 1 >= n) break; // Недостаточно данных
             char value = compressed[i + 1];
             for (int j = 0; j < count; j++) {
@@ -347,7 +334,6 @@ vector<char> decompressRLE(const vector<char>& compressed) {
             i += 2;
         }
         else {
-            // Обработка уникальных символов
             int unique_count = -count;
             if (i + unique_count >= n) break; // Недостаточно данных
 
@@ -534,10 +520,10 @@ void decompressBWT(const string& input_file) {
 // ----------------------------------- LZ77 [Lempel-Ziv 1977] -----------------------------------
 
 struct Token {
-    uint16_t offset;  // расстояние до начала найденного совпадения в окне
-    uint8_t length;   // длина совпадения
-    char next;        // следующий символ после совпадения
-    bool isLast;      // если true, то токен завершающий и поле next не используется
+    uint16_t offset;  // Расстояние до начала найденного совпадения в окне
+    uint8_t length;   // Длина совпадения
+    char next;        // Следующий символ после совпадения
+    bool isLast;      // Усли true, то токен завершающий и поле next не используется
 };
 
 vector<Token> compressLZ77Data(const string& input, int windowSize = 4096, int lookaheadBufferSize = 16) {
@@ -596,7 +582,6 @@ string decompressLZ77Data(const vector<Token>& tokens) {
 }
 
 void compressLZ77(const string& inputFile) {
-    // Чтение входного файла
     ifstream in(inputFile, ios::binary);
     if (!in) {
         cerr << "Не удалось открыть входной файл " << inputFile << "\n";
@@ -605,7 +590,6 @@ void compressLZ77(const string& inputFile) {
     string inputData((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
     in.close();
 
-    // Параметры по умолчанию (можно изменить)
     int windowSize = 4096;
     int lookaheadBufferSize = 16;
 
@@ -663,7 +647,6 @@ void decompressLZ77(const string& inputFile) {
     out.write(decompressedData.data(), decompressedData.size());
     out.close();
 
-    // Вывод информации о распаковке
     ifstream compressed(inputFile, ios::binary | ios::ate);
     ifstream decompressed("decompressed-LZ77.txt", ios::binary | ios::ate);
     cout << "LZ77 decompression results:\n";
@@ -1021,16 +1004,13 @@ int main() {
     cout << "4. RLE\n";
     cout << "5. LZ77\n";
     cout << "6. LZW\n";
-    cout << "7. BWT + RLE\n"; // Fucking BWT
+    cout << "7. BWT + RLE\n";
     cout << "8. BWT + MTF + HA\n";
     cout << "9. BWT + MTF + RLE + HA\n";
     cout << "10. LZ77 + HA\n";
     cout << "11. LZW + HA\n";
     cout << "12. LZ78\n";
     cout << "13. LZ78 + HA\n";
-    cout << "-=-=- Test -=-=-\n";
-    cout << "14. MTF + HA\n";
-    cout << "15. MTF + RLE + HA\n"; // Ideal correct
     cout << "Enter your choice: ";
     cin >> choice;
 
@@ -1107,20 +1087,6 @@ int main() {
         compressHA("compressed-LZ78.bin");
         decompressHA("compressed-HA.bin");
         decompressLZ78("decompressed-HA.txt");
-        break;
-    case 14:
-        compressMTF(inputFile);
-        compressHA("compressed-MTF.bin");
-        decompressHA("compressed-HA.bin");
-        decompressMTF("decompressed-HA.txt");
-        break;
-    case 15:
-        compressMTF(inputFile);
-        compressRLE("compressed-MTF.bin");
-        compressHA("compressed-RLE.bin");
-        decompressHA("compressed-HA.bin");
-        decompressRLE("decompressed-HA.txt");
-        decompressMTF("decompressed-RLE.txt");
         break;
     default:
         cout << "Invalid!\n";

@@ -22,9 +22,9 @@ using namespace std;
 // ----------------------------------- HA [Huffman Algorithm] -----------------------------------
 
 struct Node {
-    int frequency;
-    string old_code;
-    Node* left;
+    int frequency; // Собственно частота
+    string old_code; // Символ
+    Node* left; // Указатели на левый и правый ветки узла
     Node* right;
 
     Node(int freq, string code = "", Node* l = nullptr, Node* r = nullptr)
@@ -45,7 +45,7 @@ public:
 
     HATree() : root(nullptr) {}
 
-    void build_tree(const vector<int>& frequencies) {
+    void buildTree(const vector<int>& frequencies) {
         priority_queue<Node*, vector<Node*>, CompareNodes> nodes;
 
         for (int i = 0; i < 256; ++i) {
@@ -93,7 +93,7 @@ private:
     }
 };
 
-vector<int> count_bytes(const vector<unsigned char>& data) {
+vector<int> countBytes(const vector<unsigned char>& data) {
     vector<int> frequencies(256, 0);
     for (unsigned char byte : data) {
         frequencies[byte]++;
@@ -101,10 +101,10 @@ vector<int> count_bytes(const vector<unsigned char>& data) {
     return frequencies;
 }
 
-vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
-    vector<int> frequencies = count_bytes(data);
+vector<unsigned char> haEncoder(const vector<unsigned char>& data) {
+    vector<int> frequencies = countBytes(data);
     HATree tree;
-    tree.build_tree(frequencies);
+    tree.buildTree(frequencies);
 
     string encoded_bits;
     for (unsigned char byte : data) {
@@ -114,12 +114,12 @@ vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
 
     vector<unsigned char> header;
     for (int i = 0; i < 4; ++i) {
-        header.push_back((bit_length >> (i * 8)) & 0xFF);
-    }
+        header.push_back((bit_length >> (i * 8)) & 0xFF); // По 8 бит сдвигаю число и через объединение с 
+    }                                                     // 0xFF маскирую то, что не нужно
 
-    int non_zero = count_if(frequencies.begin(), frequencies.end(), [](int f) { return f > 0; });
+    int symbolTable = count_if(frequencies.begin(), frequencies.end(), [](int f) { return f > 0; });
     for (int i = 0; i < 4; ++i) {
-        header.push_back((non_zero >> (i * 8)) & 0xFF);
+        header.push_back((symbolTable >> (i * 8)) & 0xFF);
     }
 
     for (int byte = 0; byte < 256; ++byte) {
@@ -131,8 +131,8 @@ vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
         }
     }
 
-    int padded_length = ((bit_length + 7) / 8) * 8;
-    encoded_bits.resize(padded_length, '0');
+    int padded_length = ((bit_length + 7) / 8) * 8; // Дополняю битовую строку до длины, кратной 8 битам,
+    encoded_bits.resize(padded_length, '0'); // чтобы можно было разбить на байты для правильной записи в файл
 
     for (size_t i = 0; i < encoded_bits.size(); i += 8) {
         string byte_str = encoded_bits.substr(i, 8);
@@ -143,26 +143,26 @@ vector<unsigned char> ha_encoder(const vector<unsigned char>& data) {
     return header;
 }
 
-vector<unsigned char> ha_decoder(const vector<unsigned char>& encoded_data) {
-    if (encoded_data.size() < 8) {
-        throw runtime_error("Invalid encoded data: too short");
+vector<unsigned char> haDecoder(const vector<unsigned char>& encoded_data) {
+    if (encoded_data.size() < 8) { // Закодированные данные имеют минимум 8 байт [bit_length и symbolTable]
+        throw runtime_error("Invalid encoded data: too short"); // Иначе файл будет битым, это важная инфа в начале
     }
 
     int bit_length = 0;
     for (int i = 0; i < 4; ++i) {
-        bit_length |= encoded_data[i] << (i * 8);
+        bit_length |= encoded_data[i] << (i * 8); // Собираю сдвигами по 8 бит
     }
 
-    int non_zero = 0;
+    int symbolTable = 0; // По-другому назвать надо было, переименовал
     for (int i = 4; i < 8; ++i) {
-        non_zero |= encoded_data[i] << ((i - 4) * 8);
+        symbolTable |= encoded_data[i] << ((i - 4) * 8); // По 8 бит сдвигаю также
     }
 
     vector<int> frequencies(256, 0);
     size_t pos = 8;
-    for (int i = 0; i < non_zero; ++i) {
+    for (int i = 0; i < symbolTable; ++i) {
         if (pos + 5 > encoded_data.size()) {
-            throw runtime_error("Invalid encoded data: frequency table incomplete");
+            throw runtime_error("Invalid encoded data");
         }
         unsigned char byte = encoded_data[pos++];
         int freq = 0;
@@ -173,7 +173,7 @@ vector<unsigned char> ha_decoder(const vector<unsigned char>& encoded_data) {
     }
 
     HATree tree;
-    tree.build_tree(frequencies);
+    tree.buildTree(frequencies);
     map<string, int> reverse_codes;
     for (const auto& pair : tree.codes) {
         reverse_codes[pair.second] = pair.first;
@@ -209,7 +209,7 @@ void compressHA(const string& inputFile) {
         istreambuf_iterator<char>());
     inFile.close();
 
-    vector<unsigned char> compressed = ha_encoder(data);
+    vector<unsigned char> compressed = haEncoder(data);
 
     ofstream outFile("compressed-HA.bin", ios::binary);
     if (!outFile) {
@@ -238,7 +238,7 @@ void decompressHA(const string& inputFile) {
         istreambuf_iterator<char>());
     inFile.close();
 
-    vector<unsigned char> decompressed = ha_decoder(data);
+    vector<unsigned char> decompressed = haDecoder(data);
 
     ofstream outFile("decompressed-HA.txt", ios::binary);
     if (!outFile) {
@@ -259,12 +259,12 @@ vector<char> readFile(const string& filename) {
     ifstream file(filename, ios::binary);
     if (!file.is_open()) throw runtime_error("Cannot open file: " + filename);
 
-    file.seekg(0, ios::end);
+    file.seekg(0, ios::end); // Определяю размер файла
     size_t fileSize = file.tellg();
     file.seekg(0, ios::beg);
 
     vector<char> buffer(fileSize);
-    if (fileSize > 0) file.read(buffer.data(), fileSize);
+    if (fileSize > 0) file.read(buffer.data(), fileSize); // Всё содержимое в вектор char
     return buffer;
 }
 
@@ -285,20 +285,22 @@ vector<char> compressRLE(const vector<char>& input) {
         char current = input[i];
         size_t count = 1;
 
+        // Считаю повторы
         while (i + count < n && input[i + count] == current && count < 127) {
             count++;
         }
 
-        if (count > 1) {
+        if (count > 1) { // Для повторяющихся символов 
             compressed.push_back(static_cast<char>(count));
             compressed.push_back(current);
             i += count;
         }
         else {
-            size_t unique_count = 0;
-            while (i + unique_count < n &&
+            // Тут считаю неповторяющиеся последовательности
+            size_t unique_count = 0; // Для них использую отрицательные числа, это удобно
+            while (i + unique_count < n && // Соответственно у меня только 127 символов может быть в одном блоке
                 (i + unique_count + 1 >= n || input[i + unique_count] != input[i + unique_count + 1]) &&
-                unique_count < 127) {
+                unique_count < 127) { 
                 unique_count++;
             }
 
@@ -326,14 +328,16 @@ vector<char> decompressRLE(const vector<char>& compressed) {
         signed char count = static_cast<signed char>(compressed[i]);
 
         if (count > 0) {
+            // Обработка повторяющихся символов
             if (i + 1 >= n) break; // Недостаточно данных
             char value = compressed[i + 1];
-            for (int j = 0; j < count; j++) {
+            for (int j = 0; j < count; j++) { // Повторяю столько, сколько надо
                 decompressed.push_back(value);
             }
             i += 2;
         }
         else {
+            // Обработка неповтор. символов. Просто копирую последовательность
             int unique_count = -count;
             if (i + unique_count >= n) break; // Недостаточно данных
 
@@ -385,66 +389,66 @@ void decompressRLE(const string& inputFile) {
 
 // ----------------------------------- BWT [Burrows–Wheeler Transform] -----------------------------------
 
-vector<uint8_t> bwt_transform(const vector<uint8_t>& block, int& index) {
+vector<uint8_t> bwtTransform(const vector<uint8_t>& block, int& index) {
     int n = block.size();
-    if (n == 0) {
-        index = 0;
+    if (n == 0) { // Проверка пустого блока
+        index = 0; // index будет хранить позицию исходной строки в отсортированных вращениях
         return {};
     }
 
     vector<int> indices(n);
-    iota(indices.begin(), indices.end(), 0);
+    iota(indices.begin(), indices.end(), 0); // Заполнил вектор последовательными значениями от 0 до n-1
 
     sort(indices.begin(), indices.end(), [&block, n](int a, int b) {
-        for (int i = 0; i < n; ++i) {
-            uint8_t ca = block[(a + i) % n];
+        for (int i = 0; i < n; ++i) { // Сортирую индексы на основе лексикографического порядка всех циклических вращений
+            uint8_t ca = block[(a + i) % n]; // Для сравнения двух вращений просматриваю все символы по кругу (% n)
             uint8_t cb = block[(b + i) % n];
-            if (ca != cb) return ca < cb;
+            if (ca != cb) return ca < cb; // Сравниваю вращения символов
         }
         return false;
     });
 
-    auto it = find(indices.begin(), indices.end(), 0);
-    index = distance(indices.begin(), it);
+    auto it = find(indices.begin(), indices.end(), 0); // позицию исходной строки (индекс 0) в отсортированном 
+    index = distance(indices.begin(), it); // списке вращений. Понадобится для обратного BWT
 
     vector<uint8_t> transformed;
     transformed.reserve(n);
     for (int i : indices) {
-        transformed.push_back(block[(i + n - 1) % n]);
+        transformed.push_back(block[(i + n - 1) % n]); // Берём последний символ с каждого вращения
     }
 
     return transformed;
 }
 
-vector<uint8_t> bwt_inverse(const vector<uint8_t>& transformed, int index) {
-    int n = transformed.size();
+vector<uint8_t> bwtInverse(const vector<uint8_t>& transformed, int index) { // index - это позиция исходной строки
+    int n = transformed.size(); // Собственно размер преобразованных данных
     if (n == 0) return {};
 
-    vector<pair<uint8_t, int>> table;
+    vector<pair<uint8_t, int>> table; // Создаю таблицу, где каждый элемент это пара из символа и исходного индекса
     table.reserve(n);
     for (int i = 0; i < n; ++i) {
         table.emplace_back(transformed[i], i);
     }
 
-    stable_sort(table.begin(), table.end(),
+    stable_sort(table.begin(), table.end(), // Сортировочка
         [](const pair<uint8_t, int>& a, const pair<uint8_t, int>& b) {
         return a.first < b.first;
     });
 
     vector<int> T(n);
     for (int i = 0; i < n; ++i) {
-        T[table[i].second] = i;
+        T[table[i].second] = i; // T[i] показывает, куда перемещается символ из позиции i после сортировки
     }
 
     vector<uint8_t> original;
     original.reserve(n);
-    int current = index;
+    int current = index; // Начинаю с index и на каждом шаге добавляю символ и перехожу по T
     for (int i = 0; i < n; ++i) {
-        original.push_back(transformed[current]);
+        original.push_back(transformed[current]); // На выходе исходные данные, но в обратном порядке
         current = T[current];
     }
 
-    reverse(original.begin(), original.end());
+    reverse(original.begin(), original.end()); // Тут восстанавливаю порядок
     return original;
 }
 
@@ -467,7 +471,7 @@ void compressBWT(const string& input_file, int block_size = 1024) {
         if (bytes_read == 0) break;
 
         int index;
-        vector<uint8_t> transformed = bwt_transform(vector<uint8_t>(block.begin(), block.begin() + bytes_read), index);
+        vector<uint8_t> transformed = bwtTransform(vector<uint8_t>(block.begin(), block.begin() + bytes_read), index);
 
         int32_t index32 = static_cast<int32_t>(index);
         int32_t size32 = static_cast<int32_t>(transformed.size());
@@ -506,7 +510,7 @@ void decompressBWT(const string& input_file) {
         input.read(reinterpret_cast<char*>(transformed.data()), size32);
         if (input.gcount() != size32) throw runtime_error("Truncated block data");
 
-        vector<uint8_t> original = bwt_inverse(transformed, index32);
+        vector<uint8_t> original = bwtInverse(transformed, index32);
         output.write(reinterpret_cast<const char*>(original.data()), original.size());
         if (output.fail()) throw runtime_error("Failed to write decompressed data");
     }
@@ -520,23 +524,23 @@ void decompressBWT(const string& input_file) {
 // ----------------------------------- LZ77 [Lempel-Ziv 1977] -----------------------------------
 
 struct Token {
-    uint16_t offset;  // Расстояние до начала найденного совпадения в окне
-    uint8_t length;   // Длина совпадения
-    char next;        // Следующий символ после совпадения
-    bool isLast;      // Усли true, то токен завершающий и поле next не используется
+    uint16_t offset;  // расстояние до начала найденного совпадения в окне
+    uint8_t length;   // длина совпадения
+    char next;        // следующий символ после совпадения
+    bool isLast;      // если true, то токен завершающий и поле next не используется
 };
 
-vector<Token> compressLZ77Data(const string& input, int windowSize = 4096, int lookaheadBufferSize = 16) {
+vector<Token> dataCompressLZ77(const string& input, int windowSize = 4096, int lookaheadBufferSize = 16) {
     vector<Token> tokens;
     size_t i = 0;
     while (i < input.size()) {
         int bestLength = 0;
         int bestOffset = 0;
-        int start = (i >= windowSize) ? i - windowSize : 0;
+        int start = (i >= windowSize) ? i - windowSize : 0; // Тернарные операторы классная штука. Заметка: использовать в будущих проектах, уменьшает запись
         for (int j = start; j < i; j++) {
             int length = 0;
-            while (length < lookaheadBufferSize && i + length < input.size() &&
-                input[j + length] == input[i + length]) {
+            while (length < lookaheadBufferSize && i + length < input.size() && // Не вышли за размеры буфера,
+                input[j + length] == input[i + length]) { // не превысили размер строки и символы в окне и буфере совпадают
                 length++;
             }
             if (length > bestLength) {
@@ -565,7 +569,7 @@ vector<Token> compressLZ77Data(const string& input, int windowSize = 4096, int l
     return tokens;
 }
 
-string decompressLZ77Data(const vector<Token>& tokens) {
+string dataDecompressLZ77(const vector<Token>& tokens) {
     string output;
     for (const auto& token : tokens) {
         if (token.length > 0) {
@@ -590,10 +594,10 @@ void compressLZ77(const string& inputFile) {
     string inputData((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
     in.close();
 
-    int windowSize = 4096;
-    int lookaheadBufferSize = 16;
+    int windowSize = 4096; // 8192 пробовал, гавно
+    int lookaheadBufferSize = 64; // 16 было
 
-    vector<Token> tokens = compressLZ77Data(inputData, windowSize, lookaheadBufferSize);
+    vector<Token> tokens = dataCompressLZ77(inputData, windowSize, lookaheadBufferSize);
 
     ofstream out("compressed-LZ77.bin", ios::binary);
     if (!out) {
@@ -637,7 +641,7 @@ void decompressLZ77(const string& inputFile) {
     }
     inCompressed.close();
 
-    string decompressedData = decompressLZ77Data(tokens);
+    string decompressedData = dataDecompressLZ77(tokens);
 
     ofstream out("decompressed-LZ77.txt", ios::binary);
     if (!out) {
@@ -647,6 +651,7 @@ void decompressLZ77(const string& inputFile) {
     out.write(decompressedData.data(), decompressedData.size());
     out.close();
 
+    // Вывод информации о распаковке
     ifstream compressed(inputFile, ios::binary | ios::ate);
     ifstream decompressed("decompressed-LZ77.txt", ios::binary | ios::ate);
     cout << "LZ77 decompression results:\n";
@@ -656,7 +661,7 @@ void decompressLZ77(const string& inputFile) {
 
 // ----------------------------------- LZW [Lempel-Ziv-Welch] -----------------------------------
 
-const int MAX_DICT_SIZE = 4096;
+const int MAX_DICT_SIZE = 4096; // Максимальный размер словаря
 
 void compressLZW(const string& inputFile) {
     ifstream inFile(inputFile, ios::binary);
@@ -667,20 +672,20 @@ void compressLZW(const string& inputFile) {
         return;
     }
 
-    unordered_map<string, int> dictionary;
-    for (int i = 0; i < 256; i++) {
+    unordered_map<string, int> dictionary; // Создал начальный словарь со всеми возможными байтами
+    for (int i = 0; i < 256; i++) { // Ключи - это строки из одного символа. Значения - это их коды от 0 до 255
         dictionary[string(1, char(i))] = i;
     }
 
-    string current = "";
+    string current = ""; // Алгритм находит самую длинную строку, которая есть в словаре
     int dictSize = 256;
     vector<int> output;
 
     char byte;
     while (inFile.get(byte)) {
-        string next = current + byte;
-        if (dictionary.count(next)) {
-            current = next;
+        string next = current + byte; // Когда строка current + byte отсутствует в словаре, то выводится код
+        if (dictionary.count(next)) { // для current, новая строка добавляется в словарь и обработка
+            current = next; // начинается с byte
         }
         else {
             output.push_back(dictionary[current]);
@@ -718,12 +723,12 @@ void decompressLZW(const string& inputFile) {
         return;
     }
 
-    unordered_map<int, string> dictionary;
+    unordered_map<int, string> dictionary; // Инициализация обратного словаря, т.е. уже код -> строка
     for (int i = 0; i < 256; i++) {
         dictionary[i] = string(1, char(i));
     }
 
-    int dictSize = 256;
+    int dictSize = 256; // Новые записи добавляются в словарь по мере обработки...
     int previousCode;
     inFile.read(reinterpret_cast<char*>(&previousCode), sizeof(previousCode));
     string current = dictionary[previousCode];
@@ -765,35 +770,35 @@ void decompressLZW(const string& inputFile) {
 
 // ----------------------------------- MTF [Move-To-Front] -----------------------------------
 
-vector<unsigned char> mtf_encoder(const vector<unsigned char>& data) {
-    list<int> symbol_list;
+vector<unsigned char> mtfEncoder(const vector<unsigned char>& data) {
+    list<int> symbol_list; // Список символов инициализировал
     for (int i = 0; i < 256; ++i) {
         symbol_list.push_back(i);
     }
 
     vector<unsigned char> encoded;
     for (unsigned char byte : data) {
-        auto it = find(symbol_list.begin(), symbol_list.end(), byte);
-        int idx = distance(symbol_list.begin(), it);
-        encoded.push_back(static_cast<unsigned char>(idx));
-        symbol_list.erase(it);
+        auto it = find(symbol_list.begin(), symbol_list.end(), byte); // Ищу текущий символ в списке
+        int idx = distance(symbol_list.begin(), it); // Получаю его индекс
+        encoded.push_back(static_cast<unsigned char>(idx)); // Добавляю индекс в выходные данные
+        symbol_list.erase(it); // Перемещаю символ в начало списка
         symbol_list.push_front(byte);
     }
     return encoded;
 }
 
-vector<unsigned char> mtf_decoder(const vector<unsigned char>& data) {
-    list<int> symbol_list;
+vector<unsigned char> mtfDecoder(const vector<unsigned char>& data) {
+    list<int> symbol_list; // Снова инициализация списка символов от 0 до 255
     for (int i = 0; i < 256; ++i) {
         symbol_list.push_back(i);
     }
 
     vector<unsigned char> decoded;
     for (unsigned char idx : data) {
-        auto it = symbol_list.begin();
-        advance(it, idx);
+        auto it = symbol_list.begin(); // Нахожу символ по индексу
+        advance(it, idx); // Получаю доступ к индексу, увеличивая итератор на idx. O(n^2)
         unsigned char symbol = static_cast<unsigned char>(*it);
-        decoded.push_back(symbol);
+        decoded.push_back(symbol); // Добавляю в выходные и перемещаю в начало
         symbol_list.erase(it);
         symbol_list.push_front(symbol);
     }
@@ -811,7 +816,7 @@ void compressMTF(const string& inputFile) {
         istreambuf_iterator<char>());
     inFile.close();
 
-    vector<unsigned char> compressedData = mtf_encoder(inputData);
+    vector<unsigned char> compressedData = mtfEncoder(inputData);
 
     ofstream outFile("compressed-MTF.bin", ios::binary);
     if (!outFile) {
@@ -840,7 +845,7 @@ void decompressMTF(const string& inputFile) {
         istreambuf_iterator<char>());
     inFile.close();
 
-    vector<unsigned char> decompressedData = mtf_decoder(compressedData);
+    vector<unsigned char> decompressedData = mtfDecoder(compressedData);
 
     ofstream outFile("decompressed-MTF.txt", ios::binary);
     if (!outFile) {
@@ -860,137 +865,292 @@ void decompressMTF(const string& inputFile) {
 
 // ----------------------------------- LZ78 [Lempel-Ziv 1978] -----------------------------------
 
-struct Key {
-    uint32_t parent;
-    uint8_t symbol;
+struct DictionaryKey {
+    uint32_t parent_index; // Индекс родительской фразы в словаре
+    uint8_t current_char;  // Текущий символ
 
-    bool operator==(const Key& other) const {
-        return parent == other.parent && symbol == other.symbol;
+    bool is_equal(const DictionaryKey& other) const { // Функция сравнения двух ключей для хеш-таблицы
+        return parent_index == other.parent_index && current_char == other.current_char;
     }
 };
 
-namespace std {
-    template<> struct hash<Key> {
-        size_t operator()(const Key& k) const {
-            return hash<uint32_t>()(k.parent) ^ (hash<uint8_t>()(k.symbol) << 1);
-        }
-    };
+struct DictionaryKeyHasher { // Создал хеш-функцию для DictionaryKey, чтобы использовать её в хеш-таблице
+    size_t compute_hash(const DictionaryKey& k) const {
+        size_t hash1 = hash<uint32_t>{}(k.parent_index); // Самые обычные хеш-функции для чисел
+        size_t hash2 = hash<uint8_t>{}(k.current_char);
+
+        return hash1 ^ (hash2 << 1); // Комбинирую хеши с помощью XOR и сдвига
+    }
+};
+
+void write_uint32(uint32_t number, ostream& output_stream) { // Тот же формат, младшие байты сначала
+    uint8_t bytes[4];
+    bytes[0] = number & 0xFF;         // Младший байт
+    bytes[1] = (number >> 8) & 0xFF;
+    bytes[2] = (number >> 16) & 0xFF;
+    bytes[3] = (number >> 24) & 0xFF; // Старший байт
+
+    output_stream.write(reinterpret_cast<const char*>(bytes), 4);
 }
 
-void write_uint32_le(uint32_t value, ostream& out) {
+uint32_t read_uint32(istream& input_stream) { // Читает 32-битное число из файла в формате little-endian
     uint8_t bytes[4];
-    bytes[0] = value & 0xFF;
-    bytes[1] = (value >> 8) & 0xFF;
-    bytes[2] = (value >> 16) & 0xFF;
-    bytes[3] = (value >> 24) & 0xFF;
-    out.write(reinterpret_cast<const char*>(bytes), 4);
-}
+    input_stream.read(reinterpret_cast<char*>(bytes), 4); // Читаю 4 байта
 
-uint32_t read_uint32_le(istream& in) {
-    uint8_t bytes[4];
-    in.read(reinterpret_cast<char*>(bytes), 4);
-    if (in.gcount() != 4) {
+    if (input_stream.gcount() != 4) { // Прочитали ли мы все 4 байта
         throw runtime_error("Unexpected end of file");
     }
-    return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+
+    return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24); // Собираю число из 4 байтов
 }
 
 void compressLZ78(const string& input_filename) {
     string output_filename = "compressed-LZ78.bin";
-    ifstream input(input_filename, ios::binary);
-    if (!input) {
+
+    ifstream input_file(input_filename, ios::binary);
+    if (!input_file) {
         throw runtime_error("Cannot open input file for compression");
     }
-    ofstream output(output_filename, ios::binary);
-    if (!output) {
+
+    ofstream output_file(output_filename, ios::binary);
+    if (!output_file) {
         throw runtime_error("Cannot open output file for compression");
     }
 
-    vector<uint8_t> data((istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
-    input.close();
+    vector<uint8_t> file_data((istreambuf_iterator<char>(input_file)),
+        istreambuf_iterator<char>());
+    input_file.close();
 
-    uint32_t original_size = data.size();
+    uint32_t file_size = file_data.size(); // Записал исходный размер файла
+    write_uint32(file_size, output_file);
 
-    write_uint32_le(original_size, output);
+    unordered_map<DictionaryKey, uint32_t, DictionaryKeyHasher> dictionary; // Инициализация словаря
+    uint32_t next_code = 1; // Следующий доступный код для новой фразы
+    uint32_t current_code = 0; // Текущий код фразы
 
-    unordered_map<Key, uint32_t> dictionary;
-    uint32_t next_index = 1;
-    uint32_t current_index = 0;
+    for (uint8_t ch : file_data) { // Проходка по каждому символу в файле
+        DictionaryKey key{ current_code, ch };
 
-    for (uint8_t c : data) {
-        Key key{ current_index, c };
-        auto it = dictionary.find(key);
-        if (it != dictionary.end()) {
-            current_index = it->second;
+        auto found = dictionary.find(key); // Ищу фразу в словаре
+        if (found != dictionary.end()) { // Если фраза есть в словаре, то продолжаем накапливать
+            current_code = found->second;
         }
         else {
-            write_uint32_le(current_index, output);
-            output.put(c);
-            dictionary[key] = next_index++;
-            current_index = 0;
+            write_uint32(current_code, output_file); // Если фраза новая, то записываю пару код символ
+            output_file.put(ch);
+
+            dictionary[key] = next_code++; // И добавляю в словарь
+            current_code = 0; // Сбрасываю для новой фразы
         }
     }
 
-    if (current_index != 0) {
-        write_uint32_le(current_index, output);
-        output.put(0);
+    if (current_code != 0) { // Записываю оставшиеся данные, если они есть
+        write_uint32(current_code, output_file);
+        output_file.put(0);
     }
 
-    output.close();
+    output_file.close();
     cout << "File compressed successfully to " << output_filename << endl;
 }
 
 void decompressLZ78(const string& input_filename) {
     string output_filename = "decompressed-LZ78.txt";
-    ifstream input(input_filename, ios::binary);
-    if (!input) {
+
+    ifstream input_file(input_filename, ios::binary);
+    if (!input_file) {
         throw runtime_error("Cannot open input file for decompression");
     }
-    ofstream output(output_filename, ios::binary);
-    if (!output) {
+
+    ofstream output_file(output_filename, ios::binary);
+    if (!output_file) {
         throw runtime_error("Cannot open output file for decompression");
     }
 
-    uint32_t original_size = read_uint32_le(input);
+    uint32_t original_size = read_uint32(input_file);
 
-    vector<string> dictionary;
-    dictionary.emplace_back("");
+    vector<string> dictionary; // Инициализируем словарь с пустой строкой
+    dictionary.push_back("");
 
-    string output_data;
+    string decompressed_data;
 
-    while (true) {
-        uint32_t index;
-        uint8_t c;
+    while (true) { // Читаю пары (код, символ). Соответственно пока файл не закончится
+        uint32_t phrase_code;
+        uint8_t character;
 
         try {
-            index = read_uint32_le(input);
+            phrase_code = read_uint32(input_file);
         }
-        catch (const runtime_error& e) {
-            if (input.eof()) break;
+        catch (const std::runtime_error& e) {
+            if (input_file.eof()) break;
             throw;
         }
 
-        c = input.get();
-        if (input.eof()) break;
+        character = input_file.get();
+        if (input_file.eof()) break;
 
-        if (index >= dictionary.size()) {
+        if (phrase_code >= dictionary.size()) { // Проверил корректность кода
             throw runtime_error("Invalid index in compressed file");
         }
 
-        string phrase = dictionary[index];
-        phrase.push_back(static_cast<char>(c));
+        string phrase = dictionary[phrase_code]; // Восстанавливаю фразу здесь
+        phrase.push_back(static_cast<char>(character));
 
-        output_data += phrase;
+        decompressed_data += phrase; // Добавляю фразу к результату и в словарь
         dictionary.push_back(phrase);
     }
 
-    if (output_data.size() > original_size) {
-        output_data.resize(original_size);
+    if (decompressed_data.size() > original_size) { // Обрезаю до исходного размера на случай ошибок
+        decompressed_data.resize(original_size);
     }
 
-    output.write(output_data.data(), output_data.size());
-    output.close();
+    output_file.write(decompressed_data.data(), decompressed_data.size());
+    output_file.close();
     cout << "File decompressed successfully to " << output_filename << endl;
+}
+
+// ----------------------------------- New BWT [Burrows–Wheeler Transform - Suffix Array] -----------------------------------
+
+vector<uint8_t> newBwtTransform(const vector<uint8_t>& block, int& index) {
+    int n = block.size();
+    if (n == 0) { // Соответственно проверка на целостность блока
+        index = 0;
+        return {};
+    }
+
+    vector<int> sa(n); // Создаю суффиксный массив
+    iota(sa.begin(), sa.end(), 0);
+
+    sort(sa.begin(), sa.end(), [&block, n](int a, int b) { // Сортирую суффиксы
+        return lexicographical_compare( // a, b - это начальные позиции двух суффиксов
+            block.begin() + a, block.end(), // Суффикс, начинающийся с позиции a
+            block.begin() + b, block.end()); // и b соответственно
+    });
+
+    auto it = find(sa.begin(), sa.end(), 0); // Ищу позицию 0 индекса (начала исходной строки) в суффиксном массиве
+    index = distance(sa.begin(), it); // Теперь можно найти расстояние от начала массива до этой позиции
+
+    // Строим преобразование BWT
+    vector<uint8_t> transformed;
+    transformed.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        int pos = sa[i] == 0 ? n - 1 : sa[i] - 1; // Если 0, то суффикс это вся строка. Если нет, то все остальные суффиксы
+        transformed.push_back(block[pos]);
+    }
+
+    return transformed;
+}
+
+vector<uint8_t> newBwtInverse(const vector<uint8_t>& transformed, int index) {
+    int n = transformed.size();
+    if (n == 0) return {};
+
+    // Создаем таблицу для обратного преобразования
+    vector<pair<uint8_t, int>> table;
+    table.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        table.emplace_back(transformed[i], i);
+    }
+
+    stable_sort(table.begin(), table.end(),
+        [](const pair<uint8_t, int>& a, const pair<uint8_t, int>& b) {
+        return a.first < b.first;
+    });
+
+    vector<int> T(n); // Это таблица переходов
+    for (int i = 0; i < n; ++i) {
+        T[table[i].second] = i;
+    }
+
+    vector<uint8_t> original; // Восстанавил исходные данные
+    original.reserve(n);
+    int current = index;
+    for (int i = 0; i < n; ++i) {
+        original.push_back(transformed[current]);
+        current = T[current];
+    }
+
+    reverse(original.begin(), original.end());
+    return original;
+}
+
+void newCompressBWT(const string& input_file, int block_size = 10000000) {
+    if (block_size <= 0) {
+        throw invalid_argument("Block size must be positive");
+    }
+
+    ifstream input(input_file, ios::binary);
+    ofstream output("compressed-newBWT.bin", ios::binary);
+
+    if (!input) throw runtime_error("Cannot open input file: " + input_file);
+    if (!output) throw runtime_error("Cannot open output file: compressed-BWT.bin");
+
+    vector<uint8_t> block(block_size);
+
+    while (true) {
+        input.read(reinterpret_cast<char*>(block.data()), block_size);
+        streamsize bytes_read = input.gcount();
+        if (bytes_read == 0) break;
+
+        // Создал копию блока с терминатором
+        vector<uint8_t> block_with_sentinel(block.begin(), block.begin() + bytes_read);
+        block_with_sentinel.push_back(0x00); // Добавляем терминатор
+
+        int index;
+        vector<uint8_t> transformed = newBwtTransform(block_with_sentinel, index);
+
+        // Сохранил индекс и размер
+        int32_t index32 = static_cast<int32_t>(index);
+        int32_t size32 = static_cast<int32_t>(transformed.size());
+
+        output.write(reinterpret_cast<const char*>(&index32), sizeof(index32));
+        output.write(reinterpret_cast<const char*>(&size32), sizeof(size32));
+        output.write(reinterpret_cast<const char*>(transformed.data()), transformed.size());
+    }
+}
+
+void newDecompressBWT(const string& input_file) {
+    ifstream input(input_file, ios::binary);
+    ofstream output("decompressed-newBWT.txt", ios::binary);
+
+    if (!input) throw runtime_error("Cannot open input file: " + input_file);
+    if (!output) throw runtime_error("Cannot open output file: decompressed-newBWT.txt");
+
+    input.seekg(0, ios::end);
+    streampos compressed_size = input.tellg();
+    input.seekg(0, ios::beg);
+    cout << "Compressed file size: " << compressed_size << " bytes" << endl;
+
+    while (true) {
+        int32_t index32;
+        input.read(reinterpret_cast<char*>(&index32), sizeof(index32));
+        if (input.eof()) break;
+        if (input.fail()) throw runtime_error("Failed to read block index");
+
+        int32_t size32;
+        input.read(reinterpret_cast<char*>(&size32), sizeof(size32));
+        if (input.fail()) throw runtime_error("Failed to read block size");
+
+        if (size32 <= 0) throw runtime_error("Invalid block size");
+
+        vector<uint8_t> transformed(size32);
+        input.read(reinterpret_cast<char*>(transformed.data()), size32);
+        if (input.gcount() != size32) throw runtime_error("Truncated block data");
+
+        vector<uint8_t> original_with_sentinel = newBwtInverse(transformed, index32);
+
+        // Удаляем терминатор перед записью
+        if (!original_with_sentinel.empty() && original_with_sentinel.back() == 0x00) {
+            original_with_sentinel.pop_back();
+        }
+
+        output.write(reinterpret_cast<const char*>(original_with_sentinel.data()), original_with_sentinel.size());
+        if (output.fail()) throw runtime_error("Failed to write decompressed data");
+    }
+
+    output.close();
+    ifstream output_check("decompressed-newBWT.txt", ios::binary | ios::ate);
+    cout << "Decompressed file size: " << output_check.tellg() << " bytes" << endl;
+    output_check.close();
 }
 
 int main() {
@@ -1011,6 +1171,7 @@ int main() {
     cout << "11. LZW + HA\n";
     cout << "12. LZ78\n";
     cout << "13. LZ78 + HA\n";
+    cout << "14. New BWT\n";
     cout << "Enter your choice: ";
     cin >> choice;
 
@@ -1080,13 +1241,17 @@ int main() {
         break;
     case 12:
         compressLZ78(inputFile);
-        decompressLZ78("compressed-LZ78.bin");
+        decompressLZ78("compressed-LZ78.bin"); 
         break;
     case 13:
         compressLZ78(inputFile);
         compressHA("compressed-LZ78.bin");
         decompressHA("compressed-HA.bin");
         decompressLZ78("decompressed-HA.txt");
+        break;
+    case 14:
+        newCompressBWT(inputFile);
+        newDecompressBWT("compressed-newBWT.bin");
         break;
     default:
         cout << "Invalid!\n";
